@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
-<title>JojoMart Admin Panel</title>
+<title>SatisfyXBD Admin Panel</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%230E5E3A'/%3E%3Ctext x='20' y='29' font-size='22' font-weight='800' fill='%23E8A317' text-anchor='middle' font-family='Arial'%3EJ%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -217,13 +217,13 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       <svg class="logo-mark" viewBox="0 0 40 40" aria-hidden="true">
         <path d="M14 13V10.5a6 6 0 0 1 12 0V13" fill="none" stroke="#E8A317" stroke-width="2.6" stroke-linecap="round"/>
         <path d="M7.5 13h25l-1.8 21.2a3 3 0 0 1-3 2.8H12.3a3 3 0 0 1-3-2.8z" fill="#0E5E3A"/>
-        <text x="20" y="32" font-size="15" font-weight="800" fill="#E8A317" text-anchor="middle" font-family="Arial">J</text>
+        <text x="20" y="32" font-size="15" font-weight="800" fill="#E8A317" text-anchor="middle" font-family="Arial">S</text>
       </svg>
-      <div class="logo-text"><span class="logo-metro">Jojo<span style="color:#E8A317">Mart</span></span><span class="logo-bd">.COM</span></div>
+      <div class="logo-text"><span class="logo-metro">Satisfy<span style="color:#E8A317">XBD</span></span><span class="logo-bd">.COM</span></div>
     </div>
     <div class="login-title">Admin Panel</div>
     <div class="login-sub">লগইন করুন</div>
-    <input class="login-input" type="email" id="l-user" placeholder="Email" autocomplete="username">
+    <input class="login-input" type="text" id="l-user" placeholder="Username" autocomplete="username">
     <input class="login-input" type="password" id="l-pass" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="login-btn" id="login-btn" onclick="doLogin()">🔐 Login</button>
     <div class="login-err" id="login-err"></div>
@@ -240,9 +240,9 @@ tr:hover td{background:rgba(0,0,0,0.02);}
     <svg class="logo-mark" viewBox="0 0 40 40" aria-hidden="true">
       <path d="M14 13V10.5a6 6 0 0 1 12 0V13" fill="none" stroke="#E8A317" stroke-width="2.6" stroke-linecap="round"/>
       <path d="M7.5 13h25l-1.8 21.2a3 3 0 0 1-3 2.8H12.3a3 3 0 0 1-3-2.8z" fill="#0E5E3A"/>
-      <text x="20" y="32" font-size="15" font-weight="800" fill="#E8A317" text-anchor="middle" font-family="Arial">J</text>
+      <text x="20" y="32" font-size="15" font-weight="800" fill="#E8A317" text-anchor="middle" font-family="Arial">S</text>
     </svg>
-    <div class="logo-text"><span class="logo-metro">Jojo<span style="color:#E8A317">Mart</span></span><span class="logo-bd">.COM</span></div>
+    <div class="logo-text"><span class="logo-metro">Satisfy<span style="color:#E8A317">XBD</span></span><span class="logo-bd">.COM</span></div>
   </div>
   <div class="nav-sec">
     <div class="nav-lbl">Main</div>
@@ -546,7 +546,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       <div class="sc2" id="st-general">
         <div class="ss-title">General Settings</div>
         <div class="fg-2">
-          <div class="fg"><label>Site Name</label><input type="text" id="s-sn" placeholder="JojoMart"></div>
+          <div class="fg"><label>Site Name</label><input type="text" id="s-sn" placeholder="SatisfyXBD"></div>
           <div class="fg"><label>Site Title</label><input type="text" id="s-st" placeholder="বিশ্বস্ত অনলাইন শপ"></div>
           <div class="fg"><label>Phone Number</label><input type="text" id="s-ph" placeholder="01748945252"></div>
           <div class="fg"><label>Phone Text</label><input type="text" id="s-pt" placeholder="অর্ডার করতে কল করুন"></div>
@@ -554,7 +554,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
           <div class="fg" style="grid-column:1/-1"><label>Address</label><input type="text" id="s-ad" placeholder="Dhaka, Bangladesh"></div>
           <div class="fg" style="grid-column:1/-1"><label>Top Bar Info</label><input type="text" id="s-tb" placeholder="FREE DELIVERY সারা বাংলাদেশ"></div>
           <div class="fg" style="grid-column:1/-1"><label>Thank You Text</label><input type="text" id="s-ty" placeholder="ধন্যবাদ অর্ডার করার জন্য!"></div>
-          <div class="fg" style="grid-column:1/-1"><label>Footer Copyright</label><input type="text" id="s-fc" placeholder="© 2026 JojoMart — jojomart.com"></div>
+          <div class="fg" style="grid-column:1/-1"><label>Footer Copyright</label><input type="text" id="s-fc" placeholder="© 2026 SatisfyXBD — satisfyxbd.com"></div>
           <div class="fg" style="grid-column:1/-1">
             <label>Product Disclaimer <span style="color:var(--muted);font-size:11px;">(সব প্রোডাক্টের description-এর নিচে automatic দেখাবে)</span></label>
             <textarea id="s-disc" placeholder="বিঃদ্রঃ- ..." style="min-height:90px;"></textarea>
@@ -566,7 +566,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
         <div class="ss-title">🖼️ Website Logo</div>
         <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:14px;font-family:'Hind Siliguri';">
           এখানে logo আপলোড করলে website-এর header, footer, ব্রাউজার ট্যাব আইকন আর এই admin panel-এ সেটাই দেখাবে।<br>
-          কিছু না দিলে default "JojoMart" logo দেখাবে।<br>
+          কিছু না দিলে default "SatisfyXBD" logo দেখাবে।<br>
           💡 Transparent background-এর PNG (চওড়া/horizontal) logo সবচেয়ে সুন্দর দেখায়। সর্বোচ্চ 5MB।
         </div>
         <div id="logo-preview" style="display:flex;align-items:center;justify-content:center;min-height:110px;background:var(--surface);border:1px dashed var(--border);border-radius:10px;margin-bottom:14px;padding:14px;"></div>
@@ -636,7 +636,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
         <div class="ss-title">Login Email</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-family:'Hind Siliguri';">এখন login email: <b id="cur-admin-email"></b></div>
         <div class="note-box">⚠️ Email বদলানোর আগে নতুন email-টা Firestore Rules-এর admin তালিকায় যোগ করুন, নাহলে নতুন email দিয়ে লগইন করলে ডেটা দেখা যাবে না। নতুন email-এ একটা verification link যাবে — link-এ ক্লিক করলে তবেই email বদলাবে।</div>
-        <div class="fg"><label>New Login Email</label><input type="email" id="s-ne" placeholder="yourmail@gmail.com"></div>
+        <div class="fg"><label>New Login Email</label><input type="email" id="s-ne" placeholder="admin@satisfyxbd.com"></div>
         <div class="fg"><label>Current Password (নিশ্চিত করতে)</label><input type="password" id="s-ecp" placeholder="Current password"></div>
         <button class="btn btn-p" onclick="changeLoginEmail()">✅ Change Email</button>
       </div>
@@ -909,7 +909,7 @@ const PRODUCTS_SNAPSHOT_DOC = db.collection('jojomart').doc('products-snapshot')
 const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD_NAME+"/image/upload";
 const CLOUDINARY_VIDEO_UPLOAD_URL = "https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD_NAME+"/video/upload";
 
-const SITE_URL = "https://jojomart.com";
+const SITE_URL = "https://satisfyxbd.com";
 const SHOP_PHONE = "01748945252";
 
 function cloudReady(){
@@ -1181,7 +1181,7 @@ function showLoginPage(){
 
 function authErrMsg(err){
   const c = (err && err.code) || '';
-  if(['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email','auth/invalid-login-credentials'].includes(c)) return 'Email বা Password ভুল!';
+  if(['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email','auth/invalid-login-credentials'].includes(c)) return 'Username বা Password ভুল!';
   if(c==='auth/too-many-requests') return 'অনেকবার ভুল চেষ্টা — কিছুক্ষণ পর আবার চেষ্টা করুন';
   if(c==='auth/network-request-failed') return 'ইন্টারনেট চেক করুন';
   if(c==='auth/requires-recent-login') return 'নিরাপত্তার জন্য একবার logout করে আবার login করুন';
@@ -1190,11 +1190,21 @@ function authErrMsg(err){
   return (err && err.message) || 'সমস্যা হয়েছে';
 }
 
+// Admin panel-এ শুধু Username লেখা হয় (gmail দেখানো হয় না); ভেতরে ভেতরে Firebase Auth-এর
+// জন্য এটা @satisfyxbd.com যোগ করে email বানিয়ে নেয়। username "admin" দিলে ভেতরে
+// "admin@satisfyxbd.com" দিয়ে login হবে — এই email-টাই Firebase Console-এ user বানানোর সময় ব্যবহার করুন।
+const ADMIN_LOGIN_DOMAIN = '@satisfyxbd.com';
+function toLoginEmail(u){
+  u = (u||'').trim().toLowerCase();
+  return u.includes('@') ? u : (u + ADMIN_LOGIN_DOMAIN);
+}
+
 function doLogin(){
   if(!FIREBASE_READY){ showLoginErr('Firebase config বসানো হয়নি — admin.html-এর উপরে config paste করুন'); return; }
-  const u = document.getElementById('l-user').value.trim().toLowerCase();
+  const uname = document.getElementById('l-user').value.trim();
   const p = document.getElementById('l-pass').value;
-  if(!u || !p){ showLoginErr('Email ও Password দিন'); return; }
+  if(!uname || !p){ showLoginErr('Username ও Password দিন'); return; }
+  const u = toLoginEmail(uname);
   showLoginErr('');
   setLoginBtn(true);
   auth.signInWithEmailAndPassword(u,p).catch(err=>{
@@ -1207,8 +1217,9 @@ function doLogin(){
 
 function forgotPass(){
   if(!FIREBASE_READY){ showLoginErr('Firebase config বসানো হয়নি'); return; }
-  const u = document.getElementById('l-user').value.trim().toLowerCase();
-  if(!u){ showLoginErr('আগে উপরের বক্সে আপনার email লিখুন, তারপর আবার চাপুন'); return; }
+  const uname = document.getElementById('l-user').value.trim();
+  if(!uname){ showLoginErr('আগে উপরের বক্সে আপনার username লিখুন, তারপর আবার চাপুন'); return; }
+  const u = toLoginEmail(uname);
   auth.sendPasswordResetEmail(u).then(()=>{
     showLoginErr('');
     toast('Password reset link '+u+'-এ পাঠানো হয়েছে 📧');
@@ -1855,7 +1866,7 @@ function printInv(){
 function printSingle(){ if(curPrintO) printOrders([curPrintO]); }
 
 function printOrders(list){
-  const shopName = settings.sitename || 'JojoMart';
+  const shopName = settings.sitename || 'SatisfyXBD';
   const shopPhone = settings.phone || SHOP_PHONE;
   const shopEmail = settings.email || '';
   const logoHtml = settings.logo_url
@@ -1872,7 +1883,7 @@ function printOrders(list){
     .ft{text-align:center;margin-top:12px;font-size:11px;color:#666;}
   </style></head><body>
   ${list.map(o=>`<div class="inv">
-    <div class="hdr">${logoHtml}<div style="font-size:11px">${escHtml(settings.sitetitle||'jojomart.com')}</div><div style="font-size:11px;color:#666">📞 ${escHtml(shopPhone)}${shopEmail?' · '+escHtml(shopEmail):''}</div></div>
+    <div class="hdr">${logoHtml}<div style="font-size:11px">${escHtml(settings.sitetitle||'satisfyxbd.com')}</div><div style="font-size:11px;color:#666">📞 ${escHtml(shopPhone)}${shopEmail?' · '+escHtml(shopEmail):''}</div></div>
     <div class="row"><span>Invoice:</span><span><b>${escHtml(o.invoice)}</b></span></div>
     <div class="row"><span>Date:</span><span>${escHtml(o.date)}</span></div>
     <div class="row"><span>Customer:</span><span>${escHtml(o.name)}</span></div>
@@ -2580,7 +2591,7 @@ function applyAdminLogo(){
   const sb = document.getElementById('sb-logo');
   if(!sb) return;
   if(settings.logo_url){
-    sb.innerHTML = `<img class="logo-img" src="${cld(settings.logo_url,340)}" alt="${escHtml(settings.sitename||'JojoMart')}">`;
+    sb.innerHTML = `<img class="logo-img" src="${cld(settings.logo_url,340)}" alt="${escHtml(settings.sitename||'SatisfyXBD')}">`;
   } else {
     sb.innerHTML = DEFAULT_SB_LOGO_HTML;
   }
