@@ -1396,19 +1396,21 @@ async function aggQuery(filter, sumField){
 }
 
 function loadDashboardTrueCounts(){
-  // Uses Firebase SDK's own native count()/aggregate() methods (built into
-  // firebase-firestore-compat.js v10.7+) instead of a hand-rolled REST call —
-  // more reliable, and Firestore's automatic single-field indexes cover these.
+  // Uses Firebase SDK's own native count() method (built into firebase-firestore-compat.js,
+  // supported since v9.7) instead of a hand-rolled REST call — more reliable.
+  // Revenue is summed client-side from Completed+Delivered docs (aggregate()/sum() is
+  // skipped — its compat-SDK support is inconsistent across versions).
   const S = ['Processing','Payment Pending','On Hold','Canceled','Completed','Delivered','Incomplete'];
-  const countPromises = S.map(s => ORDERS_COL.where('status','==',s).count().get());
-  const sumPromises = ['Completed','Delivered'].map(s =>
-    ORDERS_COL.where('status','==',s).aggregate({sum: firebase.firestore.AggregateField.sum('total')}).get()
-  );
-  return Promise.all([...countPromises, ...sumPromises]).then(results=>{
+  return Promise.resolve().then(()=>{
+    const countPromises = S.map(s => ORDERS_COL.where('status','==',s).count().get());
+    const revenuePromise = ORDERS_COL.where('status','in',['Completed','Delivered']).get();
+    return Promise.all([...countPromises, revenuePromise]);
+  }).then(results=>{
     const t = {};
     S.forEach((s,i)=>{ t[s] = results[i].data().count || 0; });
     t.total = S.filter(s=>s!=='Incomplete').reduce((sum,s)=>sum+t[s],0);
-    t.revenue = (results[S.length].data().sum||0) + (results[S.length+1].data().sum||0);
+    const revSnap = results[S.length];
+    t.revenue = revSnap.docs.reduce((sum,d)=>sum+(Number(d.data().total)||0),0);
     dashboardTrueTotals = t;
     renderDashboard();
   }).catch(err=>{
