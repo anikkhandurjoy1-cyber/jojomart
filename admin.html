@@ -1396,21 +1396,17 @@ async function aggQuery(filter, sumField){
 }
 
 function loadDashboardTrueCounts(){
-  // Uses Firebase SDK's own native count() method (built into firebase-firestore-compat.js,
-  // supported since v9.7) instead of a hand-rolled REST call — more reliable.
-  // Revenue is summed client-side from Completed+Delivered docs (aggregate()/sum() is
-  // skipped — its compat-SDK support is inconsistent across versions).
-  const S = ['Processing','Payment Pending','On Hold','Canceled','Completed','Delivered','Incomplete'];
-  return Promise.resolve().then(()=>{
-    const countPromises = S.map(s => ORDERS_COL.where('status','==',s).count().get());
-    const revenuePromise = ORDERS_COL.where('status','in',['Completed','Delivered']).get();
-    return Promise.all([...countPromises, revenuePromise]);
-  }).then(results=>{
-    const t = {};
-    S.forEach((s,i)=>{ t[s] = results[i].data().count || 0; });
-    t.total = S.filter(s=>s!=='Incomplete').reduce((sum,s)=>sum+t[s],0);
-    const revSnap = results[S.length];
-    t.revenue = revSnap.docs.reduce((sum,d)=>sum+(Number(d.data().total)||0),0);
+  // Plain collection read + client-side counting — no aggregation API involved,
+  // so this works on every Firestore SDK version, no matter what the CDN build supports.
+  return ORDERS_COL.get().then(snap=>{
+    const t = {total:0, revenue:0, Processing:0, 'Payment Pending':0, 'On Hold':0, Canceled:0, Completed:0, Delivered:0, Incomplete:0};
+    snap.docs.forEach(d=>{
+      const o = d.data();
+      const st = o.status;
+      if(t[st] != null) t[st]++;
+      if(st !== 'Incomplete') t.total++;
+      if(st === 'Completed' || st === 'Delivered') t.revenue += Number(o.total) || 0;
+    });
     dashboardTrueTotals = t;
     renderDashboard();
   }).catch(err=>{
