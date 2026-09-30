@@ -1396,14 +1396,18 @@ async function aggQuery(filter, sumField){
 }
 
 function loadDashboardTrueCounts(){
+  // Only simple EQUAL filters below — these use Firestore's automatic single-field
+  // indexes, so no manual composite index needs to be created in Firebase Console.
   const S = ['Processing','Payment Pending','On Hold','Canceled','Completed','Delivered','Incomplete'];
   return Promise.all([
-    aggQuery(['status','NOT_EQUAL','Incomplete']),
     ...S.map(s=>aggQuery(['status','EQUAL',s])),
-    aggQuery(['status','IN',['Completed','Delivered']],'total')
+    aggQuery(['status','EQUAL','Completed'],'total'),
+    aggQuery(['status','EQUAL','Delivered'],'total')
   ]).then(vals=>{
-    const t = {total: vals[0], revenue: vals[vals.length-1]};
-    S.forEach((s,i)=>{ t[s] = vals[i+1]; });
+    const t = {};
+    S.forEach((s,i)=>{ t[s] = vals[i]; });
+    t.total = S.filter(s=>s!=='Incomplete').reduce((sum,s)=>sum+t[s],0);
+    t.revenue = vals[S.length] + vals[S.length+1]; // Completed total + Delivered total
     dashboardTrueTotals = t;
     renderDashboard();
   }).catch(err=>{
