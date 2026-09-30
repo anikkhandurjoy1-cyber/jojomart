@@ -21,12 +21,17 @@
      instead of a plain <link rel="stylesheet"> which pauses rendering until it arrives. -->
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
-<!-- Firebase SDK files: fetched early in the background (no render-blocking) via preload,
-     then actually loaded+run from <script> tags near the end of <body> — so by the time
-     the browser reaches those tags, the files are usually already downloaded and ready,
-     while the rest of the page has already painted. -->
-<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js">
-<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js">
+<!-- FAST FIRST LOAD: start downloading the product/store data right now, with a tiny plain
+     fetch (no Firebase SDK needed), in parallel with the rest of the page. The heavy
+     Firebase SDK is loaded later, only for live updates and placing orders. -->
+<script>
+(function(){
+  var B='https://firestore.googleapis.com/v1/projects/jojomart-696f2/databases/(default)/documents/jojomart/',
+      K='?key=AIzaSyCxS7UNyj1gjjhJTCwAaJXIXtUD6M7NTI0';
+  function get(id){ return fetch(B+id+K).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}); }
+  try{ window.__JM_FAST = { snap:get('products-snapshot'), store:get('store') }; }catch(e){}
+})();
+</script>
 <!-- Meta / TikTok / GA pixels are injected from admin Settings → Analytics (see injectTrackingPixels()). -->
 <style>
 /* ── SatisfyXBD theme: bottle green = trust / main actions, turmeric = highlights, red = prices ── */
@@ -590,8 +595,6 @@ footer .brand-tag{color:var(--gold);}
 
 <div id="toast"></div>
 
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════
 // 👇👇 শুধু এই অংশে আপনার Firebase ও Cloudinary তথ্য বসাবেন 👇👇
@@ -613,15 +616,55 @@ const firebaseConfig = {
 const FIREBASE_READY = !/PASTE_/.test(firebaseConfig.apiKey + firebaseConfig.projectId);
 if(!FIREBASE_READY) console.warn('SatisfyXBD: Firebase config বসানো হয়নি — index.html-এর নিচের script-এ config paste করুন');
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-db.settings({ experimentalAutoDetectLongPolling: true });
+// Firebase SDK is loaded AFTER the page has painted (see loadFirebase()), so it never
+// delays the first view. Anything that needs it waits on fbReady.
+let db=null, STORE_DOC, PRODUCTS_SNAPSHOT_DOC, PRODUCTS_COL, ORDERS_COL, LOCKS_COL;
+let fbReadyResolve;
+const fbReady = new Promise(r=>{ fbReadyResolve=r; });
+let fbLoadStarted=false;
+function loadFirebase(){
+  if(fbLoadStarted) return fbReady;
+  fbLoadStarted=true;
+  const urls=['https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js',
+              'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js'];
+  let left=urls.length;
+  urls.forEach(u=>{
+    const s=document.createElement('script');
+    s.src=u; s.async=false; // keep order: app first, then firestore
+    s.onload=()=>{ if(--left===0) initFirebase(); };
+    s.onerror=()=>{ console.error('Firebase SDK load failed:',u); };
+    document.head.appendChild(s);
+  });
+  return fbReady;
+}
+function initFirebase(){
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+  db.settings({ experimentalAutoDetectLongPolling: true });
+  STORE_DOC = db.collection('jojomart').doc('store');
+  PRODUCTS_SNAPSHOT_DOC = db.collection('jojomart').doc('products-snapshot');
+  PRODUCTS_COL = db.collection('jojomart_products');
+  ORDERS_COL = db.collection('jojomart_orders');
+  LOCKS_COL = db.collection('jojomart_phone_locks'); // one-order-per-hour guard (public can't read orders)
+  fbReadyResolve();
+}
 
-const STORE_DOC = db.collection('jojomart').doc('store');
-const PRODUCTS_SNAPSHOT_DOC = db.collection('jojomart').doc('products-snapshot');
-const PRODUCTS_COL = db.collection('jojomart_products');
-const ORDERS_COL = db.collection('jojomart_orders');
-const LOCKS_COL = db.collection('jojomart_phone_locks'); // one-order-per-hour guard (public can't read orders)
+// Firestore REST JSON → plain JS values (used by the fast first-load fetch)
+function fsDecode(v){
+  if(!v || typeof v!=='object') return null;
+  if('stringValue' in v) return v.stringValue;
+  if('integerValue' in v) return Number(v.integerValue);
+  if('doubleValue' in v) return Number(v.doubleValue);
+  if('booleanValue' in v) return v.booleanValue;
+  if('nullValue' in v) return null;
+  if('timestampValue' in v) return v.timestampValue;
+  if('arrayValue' in v) return (v.arrayValue.values||[]).map(fsDecode);
+  if('mapValue' in v) return fsDecodeFields(v.mapValue.fields);
+  if('referenceValue' in v) return v.referenceValue;
+  if('geoPointValue' in v) return v.geoPointValue;
+  return null;
+}
+function fsDecodeFields(f){ const o={}; for(const k in (f||{})) o[k]=fsDecode(f[k]); return o; }
 
 const SHOP_PHONE = '01748945252';
 const SHOP_WA_DEFAULT = '01748945252';
@@ -1547,6 +1590,7 @@ function scheduleDraftSave(){
 let draftCreating = false;
 function saveDraftOrder(){
   if(orderSubmitted || !curProd) return;
+  if(!db){ loadFirebase().then(saveDraftOrder); return; }
   const name=document.getElementById('o-name').value.trim();
   const phone=document.getElementById('o-phone').value.trim();
   const address=document.getElementById('o-address').value.trim();
@@ -1605,7 +1649,7 @@ function recentOrderWait(phone){
   const gapMs=ORDER_GAP_MIN*60000, now=Date.now();
   const localTs=localLastOrderTs(n);
   const localWait = localTs && now-localTs<gapMs ? Math.ceil((gapMs-(now-localTs))/60000) : 0;
-  const serverCheck = LOCKS_COL.doc(n).get().then(doc=>{
+  const serverCheck = loadFirebase().then(()=>LOCKS_COL.doc(n).get()).then(doc=>{
     const t = doc.exists && doc.data().lastOrderAt && doc.data().lastOrderAt.toMillis ? doc.data().lastOrderAt.toMillis() : 0;
     const srvWait = t && now-t<gapMs ? Math.ceil((gapMs-(now-t))/60000) : 0;
     return Math.max(srvWait, localWait);
@@ -1648,6 +1692,7 @@ function submitOrder(){
 }
 
 function submitOrderNow(name, phone, address){
+  if(!db){ setSubmitBtn('⏳ অর্ডার পাঠানো হচ্ছে...',true); loadFirebase().then(()=>submitOrderNow(name, phone, address)); return; }
   const p=curProd;
   const del=getDelCharge();
   const sub=p?(p.sale||p.regular||0)*(curQty||1):0;
@@ -1765,6 +1810,38 @@ function saveSiteCache(){
 }
 
 let storeDocLoaded=false;
+let productsGotRealResponse=false;
+
+// ── FAST PATH: data fetched in <head> via plain REST (started before the page even finished loading) ──
+function applyFastData(){
+  const F = window.__JM_FAST;
+  if(!F) return Promise.resolve();
+  const pStore = F.store.then(j=>{
+    if(!j || !j.fields || storeDocLoaded) return;
+    const d=fsDecodeFields(j.fields);
+    categories=d.categories||[]; settings=d.settings||{}; banners=d.banners||[]; reviews=d.reviews||[];
+    storeDocLoaded=true;
+    paintAll(); saveSiteCache();
+  }).catch(()=>{});
+  const pSnap = F.snap.then(j=>{
+    if(!j || !j.fields) return;
+    const data=fsDecodeFields(j.fields);
+    if(Array.isArray(data.products) && data.products.length && !productsGotRealResponse){
+      products = data.products.filter(p=>p && p._docId);
+      productsLoading=false; productsError=false;
+    }
+    if(!storeDocLoaded){
+      if(Array.isArray(data.banners)) banners=data.banners;
+      if(Array.isArray(data.categories)) categories=data.categories;
+      if(Array.isArray(data.reviews)) reviews=data.reviews;
+      if(data.settings && typeof data.settings==='object') settings=data.settings;
+    }
+    paintAll(); saveSiteCache();
+  }).catch(()=>{});
+  return Promise.all([pStore,pSnap]);
+}
+
+function attachLiveListeners(){
 STORE_DOC.onSnapshot(doc=>{
   storeDocLoaded=true;
   if(doc.exists){
@@ -1779,13 +1856,15 @@ STORE_DOC.onSnapshot(doc=>{
 }, err=>{
   console.error('Firebase settings sync error:',err);
 });
+loadProducts();
+}
 
 let productsUnsub=null;
-let productsGotRealResponse=false;
 function loadProducts(){
   if(!products.length){ productsLoading=true; productsError=false; renderProducts(); }
 
-  PRODUCTS_SNAPSHOT_DOC.get().then(doc=>{
+  // SDK snapshot read only needed if the fast REST path didn't already give us products
+  if(!products.length) PRODUCTS_SNAPSHOT_DOC.get().then(doc=>{
     if(!doc.exists) return;
     const data = doc.data() || {};
     if(Array.isArray(data.products) && data.products.length && !productsGotRealResponse){
@@ -1820,7 +1899,14 @@ function loadProducts(){
     }
   });
 }
-loadProducts();
+
+if(!products.length){ productsLoading=true; productsError=false; renderProducts(); }
+// 1) show data from the fast fetch  2) then load Firebase SDK in the background for live updates.
+// (SDK starts at most 2.5s later even if the fast fetch is slow, so nothing ever gets stuck.)
+let liveStarted=false;
+function startLive(){ if(liveStarted) return; liveStarted=true; loadFirebase().then(attachLiveListeners); }
+applyFastData().then(startLive);
+setTimeout(startLive, 2500);
 </script>
 </body>
 </html>
