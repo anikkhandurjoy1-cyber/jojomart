@@ -17,12 +17,16 @@
 <link rel="preconnect" href="https://res.cloudinary.com">
 <link rel="preconnect" href="https://firestore.googleapis.com">
 <link rel="preconnect" href="https://www.gstatic.com">
-<link href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- Firebase SDK <script> tags were moved from here down to just before the app's
-     own <script> (right above </body>) — loading them in <head> without defer blocks
-     the browser from painting ANY of the page (even the banner/skeleton) until they
-     finish downloading, which is exactly what made the site look blank on a fresh
-     phone with no cache. Moving them to the bottom lets the full page render first. -->
+<!-- Fonts loaded non-blocking: preload the stylesheet, then swap it in once fetched,
+     instead of a plain <link rel="stylesheet"> which pauses rendering until it arrives. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+<!-- Firebase SDK files: fetched early in the background (no render-blocking) via preload,
+     then actually loaded+run from <script> tags near the end of <body> — so by the time
+     the browser reaches those tags, the files are usually already downloaded and ready,
+     while the rest of the page has already painted. -->
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js">
 <!-- Meta / TikTok / GA pixels are injected from admin Settings → Analytics (see injectTrackingPixels()). -->
 <style>
 /* ── SatisfyXBD theme: bottle green = trust / main actions, turmeric = highlights, red = prices ── */
