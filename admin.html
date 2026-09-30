@@ -872,6 +872,22 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 
 <div id="toast"></div>
 
+<script>
+// INSTANT OPEN: if this phone was already logged in as admin, show the panel with the
+// last-seen dashboard numbers right away — before the Firebase SDK even downloads.
+// Fresh numbers replace these as soon as Firebase connects. (Cleared on logout.)
+(function(){
+  try{
+    var c = JSON.parse(localStorage.getItem('jm_admin_cache')||'null');
+    if(!c || !c.dash) return;
+    document.getElementById('login-page').style.display='none';
+    document.getElementById('admin-panel').style.display='block';
+    var v=c.dash.v||{}, h=c.dash.h||{}, k, el;
+    for(k in v){ el=document.getElementById(k); if(el) el.textContent=v[k]; }
+    for(k in h){ el=document.getElementById(k); if(el) el.innerHTML=h[k]; }
+  }catch(e){}
+})();
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
@@ -1233,23 +1249,39 @@ function forgotPass(){
   }).catch(err=>showLoginErr(authErrMsg(err)));
 }
 
+function getAdminCache(){ try{ return JSON.parse(localStorage.getItem('jm_admin_cache')||'null'); }catch(e){ return null; } }
+function setAdminCache(patch){
+  try{ const c=getAdminCache()||{}; Object.assign(c,patch); localStorage.setItem('jm_admin_cache', JSON.stringify(c)); }catch(e){}
+}
+function clearAdminCache(){ try{ localStorage.removeItem('jm_admin_cache'); }catch(e){} }
+
 auth.onAuthStateChanged(user=>{
-  if(!user){ showLoginPage(); return; }
+  if(!user){ clearAdminCache(); panelEntered=false; showLoginPage(); return; }
   document.getElementById('auth-wait').style.display='block';
   document.getElementById('login-card').style.display='none';
+  adminEmail = (user.email||'').toLowerCase();
+  // Already verified on this phone before → open the panel immediately, verify in the background.
+  const cached = getAdminCache();
+  if(cached && cached.store){ enterAdminPanel(cached.store); }
   // A protected read proves this account is allowed by the Firestore rules (admin email list).
-  ORDERS_COL.limit(1).get()
-    .then(()=>STORE_DOC.get())
-    .then(doc=>{
-      adminEmail = (user.email||'').toLowerCase();
-      enterAdminPanel(doc.exists?doc.data():{});
+  // Both reads run at the same time (not one after another).
+  Promise.all([ORDERS_COL.limit(1).get(), STORE_DOC.get()])
+    .then(([,doc])=>{
+      const d = doc.exists?doc.data():{};
+      setAdminCache({store:d});
+      enterAdminPanel(d);
     })
     .catch(err=>{
       console.error('Admin access check failed:',err);
       if(err && err.code==='permission-denied'){
+        clearAdminCache();
+        panelEntered=false;
         auth.signOut();
         showLoginPage();
         showLoginErr('এই account-এর admin access নেই (Firestore Rules-এ email যোগ করুন)');
+      } else if(panelEntered){
+        // already open from this phone's saved login — just warn, don't kick out
+        toast('ইন্টারনেট ধীর — কিছু তথ্য পরে আসবে','var(--red)');
       } else {
         showLoginPage();
         showLoginErr('লোড হয়নি — ইন্টারনেট চেক করে পেজ রিফ্রেশ করুন');
@@ -1270,9 +1302,11 @@ function enterAdminPanel(d){
   document.getElementById('login-page').style.display='none';
   document.getElementById('admin-panel').style.display='block';
   document.getElementById('l-pass').value='';
+  // Dashboard and products load at the same time (dashboard no longer waits for products)
+  loadDashboard(true);
   loadProducts().then(()=>{
     updateCourierSelects();
-    loadDashboard(true);
+    renderDashboard();
     updateProductsSnapshot();
   });
 }
@@ -1285,6 +1319,7 @@ function doLogout(){
   dashboardTrueTotals=null; dashboardLastLoadedAt=0;
   document.getElementById('new-order-bell').style.display='none';
   document.getElementById('l-pass').value='';
+  clearAdminCache();
   auth.signOut().finally(showLoginPage);
 }
 
@@ -1474,6 +1509,13 @@ function renderDashboard(){
   document.getElementById('recent-tb').innerHTML = recentOrders.length ?
     recentOrders.map(o=>`<tr style="cursor:pointer" onclick="sp('orders','all')"><td style="color:var(--primary);font-size:12px">${escHtml(o.invoice)}</td><td style="font-size:12px">${escHtml(o.name||'-')}</td><td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td><td><span class="badge ${sc(o.status)}">${escHtml(o.status)}</span></td></tr>`).join('') :
     '<tr><td colspan="4"><div class="es"><div class="ei">📭</div>No orders</div></td></tr>';
+
+  // remember what the dashboard showed, so next open on this phone paints instantly
+  if(t && panelEntered && auth.currentUser){
+    const g=id=>document.getElementById(id);
+    const v={}; ['d-total','d-proc','d-pay','d-hold','d-can','d-comp','d-rev','d-prods','all-badge','inc-badge'].forEach(id=>{ if(g(id)) v[id]=g(id).textContent; });
+    setAdminCache({dash:{v, h:{'today-report':g('today-report').innerHTML,'recent-tb':g('recent-tb').innerHTML}}});
+  }
 }
 
 // ══════════════════════════════════════════
