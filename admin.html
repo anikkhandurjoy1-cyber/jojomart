@@ -12,9 +12,9 @@
 <link rel="preconnect" href="https://firestore.googleapis.com">
 <link rel="preconnect" href="https://www.gstatic.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<!-- Firebase SDK <script> tags moved from here down to just before the app's own
+     <script> (right above </body>) so the login page paints instantly instead of
+     waiting on the Firebase SDK to download first. -->
 <style>
 :root{
   --primary:#0E5E3A;--primary2:#1C8A56;--accent:#E8A317;
@@ -868,6 +868,9 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 
 <div id="toast"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════
 // 👇👇 শুধু এই অংশে আপনার Firebase ও Cloudinary তথ্য বসাবেন 👇👇
