@@ -1385,7 +1385,10 @@ async function aggQuery(filter, sumField){
     body:JSON.stringify({structuredAggregationQuery:{structuredQuery:sq,aggregations:[agg]}})
   });
   const data = await res.json();
-  if(!res.ok) throw new Error((data && data.error && data.error.message) || ('HTTP '+res.status));
+  if(!res.ok){
+    const errObj = (Array.isArray(data) ? (data.find(d=>d&&d.error)||{}).error : (data&&data.error)) || {};
+    throw new Error(errObj.message || ('HTTP '+res.status));
+  }
   const row = (Array.isArray(data)?data:[data]).find(r=>r && r.result);
   const f = row && row.result.aggregateFields && row.result.aggregateFields.v;
   if(!f) return 0;
