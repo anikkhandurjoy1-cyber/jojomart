@@ -892,6 +892,41 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <script>
+// SDK SAFETY NET: if Google's CDN was blocked/failed (slow net, ad-blocker, some ISPs),
+// load the missing Firebase pieces from a backup CDN, THEN start the admin app.
+// If both fail, show a clear message with a Reload button instead of a dead page.
+(function(){
+  function startApp(){
+    var src=document.getElementById('admin-app-code');
+    if(!src){ document.addEventListener('DOMContentLoaded', startApp); return; } // app code is just below — wait for it
+    var s=document.createElement('script');
+    s.textContent=src.textContent;
+    document.body.appendChild(s);
+  }
+  function ok(){ return window.firebase && firebase.auth && firebase.firestore; }
+  if(ok()){ startApp(); return; }
+  var B='https://cdn.jsdelivr.net/npm/firebase@10.7.0/';
+  var need=[];
+  if(!window.firebase) need.push('firebase-app-compat.js');
+  if(!window.firebase || !firebase.auth) need.push('firebase-auth-compat.js');
+  if(!window.firebase || !firebase.firestore) need.push('firebase-firestore-compat.js');
+  function fail(){
+    var w=document.getElementById('auth-wait');
+    document.getElementById('login-page').style.display='flex';
+    document.getElementById('admin-panel').style.display='none';
+    if(w){ w.style.display='block'; w.innerHTML='⚠️ নেট ধীর — Firebase লোড হয়নি।<br><button onclick="location.reload()" style="margin-top:10px;padding:8px 18px;border:none;border-radius:8px;background:#0E5E3A;color:#fff;font-size:14px;">🔄 আবার লোড করুন</button>'; }
+  }
+  (function next(i){
+    if(i>=need.length){ ok()?startApp():fail(); return; }
+    var s=document.createElement('script'); s.src=B+need[i];
+    var done=false, t=setTimeout(function(){ if(!done){ done=true; fail(); } },20000);
+    s.onload=function(){ if(done) return; done=true; clearTimeout(t); next(i+1); };
+    s.onerror=function(){ if(done) return; done=true; clearTimeout(t); fail(); };
+    document.head.appendChild(s);
+  })(0);
+})();
+</script>
+<script type="text/plain" id="admin-app-code">
 // ═══════════════════════════════════════════════════════════
 // 👇👇 শুধু এই অংশে আপনার Firebase ও Cloudinary তথ্য বসাবেন 👇👇
 // (index.html-এও ঠিক একই তথ্য বসাতে হবে)
@@ -989,7 +1024,9 @@ function uploadResizedImage(file,maxDim,quality){
           const fd=new FormData();
           fd.append('file',blob);
           fd.append('upload_preset',CLOUDINARY_UPLOAD_PRESET);
-          fetch(CLOUDINARY_UPLOAD_URL,{method:'POST',body:fd})
+          let upOpts={method:'POST',body:fd};
+          try{ const ac=new AbortController(); upOpts.signal=ac.signal; setTimeout(()=>ac.abort(),90000); }catch(e){}
+          fetch(CLOUDINARY_UPLOAD_URL,upOpts)
             .then(r=>r.json())
             .then(d=>{ if(d.secure_url) resolve(d.secure_url); else reject(new Error((d.error&&d.error.message)||'Upload failed')); })
             .catch(reject);
@@ -1014,6 +1051,8 @@ let banners = [];
 let reviews = [];
 let adminEmail = '';
 let panelEntered = false;
+let storeFresh = false;      // fresh store data arrived from server (not just the phone cache)
+let productsLoaded = false;  // products really loaded → safe to rewrite the customer snapshot
 
 let todayOrders = [];
 let recentOrders = [];
@@ -1116,6 +1155,7 @@ function playNewOrderSound(){
 function startRealtimeSync(){
   if(unsubscribeStore) return;
   unsubscribeStore=STORE_DOC.onSnapshot(doc=>{
+    if(!doc.metadata || !doc.metadata.fromCache) storeFresh = true;
     if(!doc.exists) return;
     const d=doc.data();
     categories=d.categories||[];
@@ -1141,6 +1181,10 @@ function startRealtimeSync(){
 }
 
 function saveAll(){
+  if(!storeFresh){
+    toast('একটু অপেক্ষা করুন — সার্ভার থেকে তথ্য আসছে, তারপর আবার Save চাপুন','var(--yellow)');
+    return Promise.reject(new Error('store not loaded yet'));
+  }
   return STORE_DOC.set({categories,couriers,users,settings,banners,reviews},{merge:true})
     .then(()=>{ updateProductsSnapshot(); })
     .catch(err=>{ console.error('Firebase save error:',err); toast('সেভ করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)'); throw err; });
@@ -1162,6 +1206,8 @@ function buildSnapshotData(){
 }
 let snapshotUpdatePending = false;
 function updateProductsSnapshot(){
+  // SAFETY: if products didn't load (slow net), writing now would erase every product on the customer site
+  if(!productsLoaded) return;
   if(snapshotUpdatePending) return;
   snapshotUpdatePending = true;
   setTimeout(()=>{
@@ -1255,38 +1301,62 @@ function setAdminCache(patch){
 }
 function clearAdminCache(){ try{ localStorage.removeItem('jm_admin_cache'); }catch(e){} }
 
+// Stop every live listener (used by every kind of sign-out, not just the Logout button)
+function teardownListeners(){
+  if(unsubscribeNewOrders){ unsubscribeNewOrders(); unsubscribeNewOrders=null; }
+  if(ordersPageUnsub){ ordersPageUnsub(); ordersPageUnsub=null; }
+  if(unsubscribeStore){ unsubscribeStore(); unsubscribeStore=null; }
+  lastSeenOrderTs=null; newOrderCount=0; panelEntered=false; storeFresh=false; productsLoaded=false;
+  dashboardTrueTotals=null; dashboardLastLoadedAt=0;
+}
+
+let verifyRun=0;
+// Checks this account is an admin (Firestore rules). On a slow network it retries
+// automatically instead of getting stuck on "লোড হচ্ছে".
+function verifyAdmin(user, attempt){
+  attempt = attempt||0;
+  const run = ++verifyRun;
+  Promise.all([ORDERS_COL.limit(1).get(), STORE_DOC.get()])
+    .then(([,doc])=>{
+      if(run!==verifyRun || !auth.currentUser || auth.currentUser.uid!==user.uid) return; // logged out meanwhile
+      const d = doc.exists?doc.data():{};
+      setAdminCache({store:d});
+      storeFresh = true;
+      enterAdminPanel(d);
+    })
+    .catch(err=>{
+      if(run!==verifyRun || !auth.currentUser || auth.currentUser.uid!==user.uid) return;
+      console.error('Admin access check failed:',err);
+      if(err && err.code==='permission-denied'){
+        clearAdminCache();
+        teardownListeners();
+        auth.signOut();
+        showLoginPage();
+        showLoginErr('এই account-এর admin access নেই (Firestore Rules-এ email যোগ করুন)');
+        return;
+      }
+      // slow / offline network → keep trying (3s, 6s, 9s … max 15s apart)
+      const wait = Math.min(15000, 3000*(attempt+1));
+      if(panelEntered){
+        if(attempt===0) toast('ইন্টারনেট ধীর — আবার চেষ্টা হচ্ছে...','var(--yellow)');
+      } else {
+        const w=document.getElementById('auth-wait');
+        if(w){ w.style.display='block'; w.textContent='⏳ নেট ধীর — আবার চেষ্টা হচ্ছে...'; }
+        document.getElementById('login-card').style.display='none';
+      }
+      setTimeout(()=>verifyAdmin(user, attempt+1), wait);
+    });
+}
+
 auth.onAuthStateChanged(user=>{
-  if(!user){ clearAdminCache(); panelEntered=false; showLoginPage(); return; }
+  if(!user){ verifyRun++; clearAdminCache(); teardownListeners(); showLoginPage(); return; }
   document.getElementById('auth-wait').style.display='block';
   document.getElementById('login-card').style.display='none';
   adminEmail = (user.email||'').toLowerCase();
   // Already verified on this phone before → open the panel immediately, verify in the background.
   const cached = getAdminCache();
   if(cached && cached.store){ enterAdminPanel(cached.store); }
-  // A protected read proves this account is allowed by the Firestore rules (admin email list).
-  // Both reads run at the same time (not one after another).
-  Promise.all([ORDERS_COL.limit(1).get(), STORE_DOC.get()])
-    .then(([,doc])=>{
-      const d = doc.exists?doc.data():{};
-      setAdminCache({store:d});
-      enterAdminPanel(d);
-    })
-    .catch(err=>{
-      console.error('Admin access check failed:',err);
-      if(err && err.code==='permission-denied'){
-        clearAdminCache();
-        panelEntered=false;
-        auth.signOut();
-        showLoginPage();
-        showLoginErr('এই account-এর admin access নেই (Firestore Rules-এ email যোগ করুন)');
-      } else if(panelEntered){
-        // already open from this phone's saved login — just warn, don't kick out
-        toast('ইন্টারনেট ধীর — কিছু তথ্য পরে আসবে','var(--red)');
-      } else {
-        showLoginPage();
-        showLoginErr('লোড হয়নি — ইন্টারনেট চেক করে পেজ রিফ্রেশ করুন');
-      }
-    });
+  verifyAdmin(user, 0);
 });
 
 function enterAdminPanel(d){
@@ -1304,19 +1374,18 @@ function enterAdminPanel(d){
   document.getElementById('l-pass').value='';
   // Dashboard and products load at the same time (dashboard no longer waits for products)
   loadDashboard(true);
-  loadProducts().then(()=>{
+  const tryProducts=(n)=>loadProducts().then(()=>{
+    if(!productsLoaded && panelEntered && n<5){ setTimeout(()=>tryProducts(n+1), 4000*(n+1)); return; }
     updateCourierSelects();
     renderDashboard();
     updateProductsSnapshot();
   });
+  tryProducts(0);
 }
 
 function doLogout(){
-  if(unsubscribeNewOrders){ unsubscribeNewOrders(); unsubscribeNewOrders=null; }
-  if(ordersPageUnsub){ ordersPageUnsub(); ordersPageUnsub=null; }
-  if(unsubscribeStore){ unsubscribeStore(); unsubscribeStore=null; }
-  lastSeenOrderTs=null; newOrderCount=0; panelEntered=false;
-  dashboardTrueTotals=null; dashboardLastLoadedAt=0;
+  verifyRun++;
+  teardownListeners();
   document.getElementById('new-order-bell').style.display='none';
   document.getElementById('l-pass').value='';
   clearAdminCache();
@@ -1397,6 +1466,8 @@ function sp(page, filter){
 function loadProducts(){
   return PRODUCTS_COL.get().then(snap=>{
     products = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+    // an empty result straight from the offline cache isn't trustworthy
+    if(!(snap.metadata && snap.metadata.fromCache && !snap.docs.length)) productsLoaded = true;
   }).catch(err=>{
     console.error('Load products error:',err);
     toast('প্রোডাক্ট লোড করতে সমস্যা','var(--red)');
@@ -1450,11 +1521,15 @@ function loadDashboardTrueCounts(){
       if(st === 'Completed' || st === 'Delivered') t.revenue += Number(o.total) || 0;
     });
     dashboardTrueTotals = t;
+    dashboardFromError = false;
     renderDashboard();
   }).catch(err=>{
     console.warn('Dashboard count failed:', err && err.message);
-    toast('ড্যাশবোর্ড সংখ্যা লোড হয়নি: '+((err&&err.message)||'অজানা সমস্যা'), 'var(--red)');
-    // fallback to zero so the boxes don't stay stuck on "…" forever
+    toast('ড্যাশবোর্ড সংখ্যা লোড হয়নি — নেট চেক করে Dashboard এ আবার চাপুন', 'var(--red)');
+    dashboardLastLoadedAt = 0;   // allow an immediate retry next time Dashboard is opened
+    if(dashboardTrueTotals) return;   // keep the last good numbers instead of replacing them with zeros
+    // fallback to zero so the boxes don't stay stuck on "…" forever (never saved to the phone cache)
+    dashboardFromError = true;
     dashboardTrueTotals = {total:0, revenue:0, Processing:0, 'Payment Pending':0, 'On Hold':0, Canceled:0, Completed:0, Delivered:0, Incomplete:0};
     renderDashboard();
   });
@@ -1482,8 +1557,11 @@ function loadDashboard(force){
   loadDashboardTrueCounts();
 }
 
+let dashboardFromError = false;
 function renderDashboard(){
   const t = dashboardTrueTotals;
+  // panel opened instantly from the phone cache → keep showing those numbers until real ones arrive
+  if(!t){ const c=getAdminCache(); if(c && c.dash) return; }
   const show = (id,v)=>{ document.getElementById(id).textContent = (v==null?'…':v); };
   show('d-total', t && t.total);
   show('d-proc',  t && t['Processing']);
@@ -1511,7 +1589,7 @@ function renderDashboard(){
     '<tr><td colspan="4"><div class="es"><div class="ei">📭</div>No orders</div></td></tr>';
 
   // remember what the dashboard showed, so next open on this phone paints instantly
-  if(t && panelEntered && auth.currentUser){
+  if(t && !dashboardFromError && panelEntered && auth.currentUser){
     const g=id=>document.getElementById(id);
     const v={}; ['d-total','d-proc','d-pay','d-hold','d-can','d-comp','d-rev','d-prods','all-badge','inc-badge'].forEach(id=>{ if(g(id)) v[id]=g(id).textContent; });
     setAdminCache({dash:{v, h:{'today-report':g('today-report').innerHTML,'recent-tb':g('recent-tb').innerHTML}}});
@@ -1544,7 +1622,18 @@ function loadOrdersPage(pageIndex){
   tb.innerHTML = '<tr><td colspan="9"><div class="es">⏳ Loading...</div></td></tr>';
   document.getElementById('o-empty').style.display='none';
   if(ordersPageUnsub){ ordersPageUnsub(); ordersPageUnsub=null; }
+  let gotServer=false;
+  clearTimeout(window._ordersSlowT);
+  // offline/slow: Firestore just waits silently → after 15s show a retry button instead of endless Loading
+  window._ordersSlowT=setTimeout(()=>{
+    if(gotServer) return;
+    if(!orders.length || tb.textContent.includes('Loading')){
+      tb.innerHTML = '<tr><td colspan="9"><div class="es">⚠️ নেট ধীর — অর্ডার আসতে দেরি হচ্ছে<br><button class="btn btn-p btn-sm" style="margin-top:8px" onclick="loadOrdersPage('+pageIndex+')">🔄 আবার চেষ্টা করুন</button></div></td></tr>';
+    }
+  },15000);
   ordersPageUnsub = q.onSnapshot(snap=>{
+    if(snap.metadata && !snap.metadata.fromCache){ gotServer=true; clearTimeout(window._ordersSlowT); }
+    if(!snap.docs.length && snap.metadata && snap.metadata.fromCache) return; // empty offline cache ≠ "no orders"
     orders = snap.docs.map(d=>({...d.data(), _docId:d.id, _docRef:d.ref}));
     const df = document.getElementById('o-dfilter').value;
     const hasFilter = (curOF && curOF!=='all') || df;
@@ -2033,6 +2122,7 @@ function renderImgSlots(){
 
 function removeProductImage(idx){ pmImages.splice(idx,1); renderImgSlots(); }
 
+let pmImgUploading = 0;
 function handleImgUpload(input,slotIdx){
   const file=input.files&&input.files[0];
   input.value='';
@@ -2041,7 +2131,8 @@ function handleImgUpload(input,slotIdx){
   if(!file.type.startsWith('image/')){ toast('শুধু ছবি ফাইল দিন','var(--red)'); return; }
   const slotEl = document.getElementById('img-slot-'+slotIdx);
   if(slotEl) slotEl.innerHTML = '<span style="font-size:20px;">⏳</span>';
-  uploadResizedImage(file,900,0.82).then(url=>{
+  pmImgUploading++;
+  uploadResizedImage(file,900,0.82).finally(()=>{ pmImgUploading--; }).then(url=>{
     // fill the first empty slot so there are never gaps
     const idx = Math.min(slotIdx, pmImages.filter(Boolean).length);
     pmImages = pmImages.filter(Boolean);
@@ -2222,6 +2313,7 @@ let productSaving = false;
 function saveProduct(){
   if(productSaving) return;
   if(pmVideoUploading){ toast('ভিডিও আপলোড শেষ হওয়ার অপেক্ষা করুন','var(--yellow)'); return; }
+  if(pmImgUploading>0){ toast('ছবি আপলোড শেষ হওয়ার অপেক্ষা করুন','var(--yellow)'); return; }
   const name=document.getElementById('pm-name').value.trim();
   const reg=parseFloat(document.getElementById('pm-reg').value);
   if(!name||!reg){ toast('নাম ও দাম দিন','var(--red)'); return; }
@@ -2246,13 +2338,15 @@ function saveProduct(){
     desc:document.getElementById('pm-desc').value
   };
   productSaving = true;
+  // slow net: don't lock the Save button forever
+  const saveSlowT = setTimeout(()=>{ if(productSaving){ productSaving=false; toast('নেট ধীর — সেভ চলছে, একটু পরে লিস্ট চেক করুন','var(--yellow)'); } },20000);
   if(editP){
     const target = editP;
     PRODUCTS_COL.doc(target._docId).set(data,{merge:true}).then(()=>{
       Object.assign(target,data);
       renderProducts(); cm('prod-modal'); toast('Updated ✅'); editP=null; updateProductsSnapshot();
     }).catch(err=>{ console.error(err); toast('সেভ করতে সমস্যা','var(--red)'); })
-      .finally(()=>{ productSaving=false; });
+      .finally(()=>{ productSaving=false; clearTimeout(saveSlowT); });
   } else {
     const newProd = {id:Date.now(),...data};
     PRODUCTS_COL.add(newProd).then(ref=>{
@@ -2260,7 +2354,7 @@ function saveProduct(){
       products.push(newProd);
       renderProducts(); cm('prod-modal'); toast('Added ✅'); updateProductsSnapshot();
     }).catch(err=>{ console.error(err); toast('সেভ করতে সমস্যা','var(--red)'); })
-      .finally(()=>{ productSaving=false; });
+      .finally(()=>{ productSaving=false; clearTimeout(saveSlowT); });
   }
 }
 
@@ -2855,6 +2949,7 @@ function manualRebuildSnapshot(){
   if(btn){ btn.disabled = true; btn.textContent = '⏳ Rebuilding...'; }
   if(status) status.textContent = 'প্রোডাক্ট fetch করা হচ্ছে...';
   loadProducts().then(()=>{
+    if(!productsLoaded) throw new Error('প্রোডাক্ট লোড হয়নি — ইন্টারনেট চেক করে আবার চাপুন');
     if(status) status.textContent = 'Snapshot লেখা হচ্ছে...';
     return PRODUCTS_SNAPSHOT_DOC.set(buildSnapshotData());
   }).then(()=>{
