@@ -28,7 +28,11 @@
 (function(){
   var B='https://firestore.googleapis.com/v1/projects/jojomart-696f2/databases/(default)/documents/jojomart/',
       K='?key=AIzaSyCxS7UNyj1gjjhJTCwAaJXIXtUD6M7NTI0';
-  function get(id){ return fetch(B+id+K).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}); }
+  function get(id){
+    var o={};
+    try{ var ac=new AbortController(); o.signal=ac.signal; setTimeout(function(){ac.abort();},12000); }catch(e){}
+    return fetch(B+id+K,o).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
+  }
   try{ window.__JM_FAST = { snap:get('products-snapshot'), store:get('store') }; }catch(e){}
 })();
 </script>
@@ -424,7 +428,7 @@ footer .brand-tag{color:var(--gold);}
   <div class="products-grid" id="products-grid"></div>
   <div class="es" id="p-empty" style="display:none;"><div class="ei">📦</div><div>এই খোঁজে কোনো পণ্য নেই — অন্য নাম দিয়ে খুঁজুন</div></div>
   <div class="es" id="p-loading" style="display:none;"><div class="ei">⏳</div><div>পণ্য লোড হচ্ছে...</div></div>
-  <div class="es" id="p-retry" style="display:none;"><div class="ei">⚠️</div><div>পণ্য লোড হয়নি — ইন্টারনেট চেক করে আবার চেষ্টা করুন</div><button onclick="loadProducts()" style="margin-top:10px;padding:8px 18px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-family:'Hind Siliguri';cursor:pointer">আবার লোড করুন</button></div>
+  <div class="es" id="p-retry" style="display:none;"><div class="ei">⚠️</div><div>পণ্য লোড হয়নি — ইন্টারনেট চেক করে আবার চেষ্টা করুন</div><button onclick="retryProducts()" style="margin-top:10px;padding:8px 18px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-family:'Hind Siliguri';cursor:pointer">আবার লোড করুন</button></div>
 </div>
 
 <!-- CATEGORY PAGE -->
@@ -637,7 +641,11 @@ function loadScript(u){
   return new Promise((res,rej)=>{
     const s=document.createElement('script');
     s.src=u; s.async=false;
-    s.onload=res; s.onerror=()=>{ s.remove(); rej(new Error('load failed: '+u)); };
+    let done=false;
+    // slow-network guard: if a CDN hangs for 10s, give up on it so the backup CDN is tried
+    const t=setTimeout(()=>{ if(done) return; done=true; rej(new Error('timeout: '+u)); },10000);
+    s.onload=()=>{ if(done) return; done=true; clearTimeout(t); res(); };
+    s.onerror=()=>{ if(done) return; done=true; clearTimeout(t); s.remove(); rej(new Error('load failed: '+u)); };
     document.head.appendChild(s);
   });
 }
@@ -1407,7 +1415,10 @@ function closeDetail(){
   if(curCat==='all') setFocusMode(false);
   try{
     const url=new URL(window.location.href);
-    if(url.searchParams.has('product')){ url.searchParams.delete('product'); history.pushState({},'',url.toString()); }
+    if(url.searchParams.has('product')){
+      if(history.state && history.state.product){ _skipExitOnce=true; history.back(); }   // undo our own entry → Back won't reopen it
+      else { url.searchParams.delete('product'); history.replaceState({},'',url.toString()); }
+    }
   }catch(e){}
 }
 
@@ -1456,14 +1467,37 @@ document.addEventListener('mouseout', function(e){
   if(!e.relatedTarget && !e.toElement && e.clientY<=0) showExitOffer();
 });
 
-history.pushState({jmGuard:true},'',window.location.href);
+// Back-button setup. For a ?product= landing (ads): base page → guard → product,
+// so the first Back closes the product instead of re-opening it.
+let _skipExitOnce=false;
+(function(){
+  try{
+    const u=new URL(window.location.href);
+    const pid=u.searchParams.get('product');
+    if(pid){
+      u.searchParams.delete('product');
+      history.replaceState({},'',u.toString());
+      history.pushState({jmGuard:true},'',u.toString());
+      u.searchParams.set('product',pid);
+      history.pushState({product:pid},'',u.toString());
+    } else {
+      history.pushState({jmGuard:true},'',window.location.href);
+    }
+  }catch(e){ history.pushState({jmGuard:true},'',window.location.href); }
+})();
 
 window.addEventListener('popstate',function(){
+  // if Back just closed a popup, don't throw the "exit offer" at the customer
+  const hadPopup = !!document.querySelector('.mo.active') || _skipExitOnce;
+  _skipExitOnce=false;
   // close any open popup first (phone back button)
   ['order-overlay','cart-overlay','image-zoom-overlay','exit-offer-overlay'].forEach(cm);
   const params=new URLSearchParams(window.location.search);
   const pid=params.get('product');
   if(pid){ if(findProd(pid)) openDetail(pid); return; }
+  if(document.getElementById('pd-overlay').classList.contains('active')){
+    const v=document.querySelector('#pd-content video'); if(v) try{v.pause();}catch(e){}
+  }
   cm('pd-overlay');
   const cat=params.get('category');
   const chip=cat ? findCatChip(cat) : null;
@@ -1487,7 +1521,7 @@ window.addEventListener('popstate',function(){
       renderProducts();
     }
   }
-  showExitOffer();
+  if(!hadPopup) showExitOffer();
 });
 
 let pdCurrentImgIdx = 0;
@@ -1770,8 +1804,14 @@ function submitOrderNow(name, phone, address){
     setSubmitBtn('✅ অর্ডার কনফার্ম করুন',false);
   }
   setSubmitBtn('⏳ অর্ডার পাঠানো হচ্ছে...',true);
+  // slow network: the order is queued and keeps retrying — tell the customer not to close the page
+  const slowT=setTimeout(()=>{
+    if(!orderBusy) return;
+    setSubmitBtn('⏳ নেট ধীর — অর্ডার যাচ্ছে, পেজ বন্ধ করবেন না...',true);
+    showToast('নেট ধীর — একটু অপেক্ষা করুন, অথবা কল করুন: '+shopPhone(),'#D97706');
+  },10000);
   const write = draftOrderId ? ORDERS_COL.doc(draftOrderId).set(order,{merge:true}) : ORDERS_COL.add(order);
-  write.then(onSuccess).catch(onFail);
+  write.then(()=>{ clearTimeout(slowT); onSuccess(); }).catch(e=>{ clearTimeout(slowT); onFail(e); });
 }
 
 // ══════════════════════════════════
@@ -1801,6 +1841,7 @@ function checkoutCart(){
   if(!cart.length){ showToast('Cart খালি — আগে পণ্য যোগ করুন','#EF4444'); return; }
   const first = findProd(cart[0].id);
   cm('cart-overlay');
+  if(cart.length>1) setTimeout(()=>showToast('একবারে একটি পণ্যের অর্ডার হয় — বাকিগুলো কার্টে থাকবে','#D97706'),400);
   if(first){ curProd=first; curQty=cart[0].qty||1; openOrderModal(first._docId); curQty=cart[0].qty||1; document.getElementById('oqw-num').textContent=curQty; updSumm(); }
   else { showToast('আগে একটি পণ্য সিলেক্ট করুন','#EF4444'); showTab('shop'); }
 }
@@ -1939,10 +1980,32 @@ function loadProducts(){
 if(!products.length){ productsLoading=true; productsError=false; renderProducts(); }
 // 1) show data from the fast fetch  2) then load Firebase SDK in the background for live updates.
 // (SDK starts at most 2.5s later even if the fast fetch is slow, so nothing ever gets stuck.)
-let liveStarted=false;
-function startLive(){ if(liveStarted) return; liveStarted=true; loadFirebase().then(attachLiveListeners).catch(()=>{}); }
+let liveStarted=false, liveAttached=false;
+function attachLiveOnce(){ if(liveAttached){ loadProducts(); return; } liveAttached=true; attachLiveListeners(); }
+function showProductsErrorIfEmpty(){
+  if(!products.length){ productsLoading=false; productsError=true; renderProducts(); }
+}
+function startLive(){
+  if(liveStarted) return; liveStarted=true;
+  loadFirebase().then(attachLiveOnce).catch(showProductsErrorIfEmpty);
+}
 applyFastData().then(startLive);
 setTimeout(startLive, 2500);
+// Slow-network watchdog: never leave the customer staring at a spinner forever.
+// After 20s with still no products → show "আবার লোড করুন" button instead.
+setTimeout(showProductsErrorIfEmpty, 20000);
+function retryProducts(){
+  productsLoading=true; productsError=false; renderProducts();
+  // try the fast REST path again, and the SDK too — whichever comes first wins
+  try{
+    const B='https://firestore.googleapis.com/v1/projects/jojomart-696f2/databases/(default)/documents/jojomart/', K='?key='+firebaseConfig.apiKey;
+    const get=id=>fetch(B+id+K).then(r=>r.ok?r.json():null).catch(()=>null);
+    window.__JM_FAST={ snap:get('products-snapshot'), store:get('store') };
+    applyFastData();
+  }catch(e){}
+  loadFirebase().then(attachLiveOnce).catch(()=>{});
+  setTimeout(showProductsErrorIfEmpty, 20000);
+}
 </script>
 </body>
 </html>
